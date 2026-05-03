@@ -48,7 +48,7 @@ GitHub Pages にそのまま配置して利用できます。
 
 GitHub Pages で公開  
 下記のURLにアクセスして使用してください  
-URL:
+URL: https://tmed-it.github.io/student-id-converter/
 
 ### (開発者向け) GitHub Pages での公開手順
 1. GitHub の `Settings` → `Pages` を開く

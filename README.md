@@ -79,8 +79,8 @@ URL: https://tmed-it.github.io/student-id-converter/
 
 
 #### (開発者向け)
-ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrityを更新する必要があります。  
-integrityはファイルの整合性を確認するハッシュ値で、unpkg.comの場合はURL末尾に?metaを追加することで取得できます。  
+ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrityを更新する必要があります  
+integrityはファイルの整合性を確認するハッシュ値で、unpkg.comの場合はURL末尾に?metaを追加することで取得できます  
 (例:https://unpkg.com/pdf-lib@1.17.1/dist/?meta)
 
 CDN Update 2026/5/4

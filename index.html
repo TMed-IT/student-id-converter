@@ -66,7 +66,7 @@
   #page-info { font-size: 13px; color: var(--text2); flex: 1; text-align: center; }
   .canvas-wrap { position: relative; width: 100%; overflow: auto; background: #d1d5db; border-radius: var(--radius-sm); max-height: 75vh; -webkit-overflow-scrolling: touch; }
   #pdf-canvas { display: block; width: 100%; height: auto; }
-  #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  #overlay-canvas { position: absolute; top: 0; left: 0; pointer-events: none; }
   /* #pdf-canvas と #overlay-canvas のスタイルは .canvas-wrap 内で定義 */
   #img-wrap { position: relative; display: none; }
   #source-img { display: block; max-width: 100%; }
@@ -85,7 +85,7 @@
 
 <header>
   <h1>学籍番号 → 名前 変換</h1>
-  <p>PDFのテキストから5桁の学籍番号を検出して名前に置き換えます</p>
+  <p>PDFのテキストから学籍番号を検出して名前に置き換えます</p>
   <span class="privacy-note">🔒 すべてブラウザ内で処理 — 個人情報は外部に送信されません</span>
 </header>
 
@@ -177,6 +177,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -351,7 +352,7 @@ async function extractIDsFromTextLayer(page, renderScale) {
       const pdfY  = tx[5];
 
       const pt0 = viewport.convertToViewportPoint(pdfX0, pdfY);
-      const pt1 = viewport.convertToViewportPoint(pdfX1, pdfY - itemH);
+      const pt1 = viewport.convertToViewportPoint(pdfX1, pdfY - itemH); // pdfY+itemHとすれば学籍番号の真上に名前が挿入される
 
       results.push({
         original: id,
@@ -413,14 +414,14 @@ async function renderPDFPage(pageNum) {
   const overlay = document.getElementById('overlay-canvas');
   canvas.width = viewport.width;
   canvas.height = viewport.height;
-  // CSS側で表示サイズを制御（拡大されすぎないよう）
-  canvas.style.width = '100%';
-  canvas.style.height = 'auto';
+  // 内部サイズと表示サイズを1:1に揃える（ズレ防止）
+  canvas.style.width = canvas.width + 'px';
+  canvas.style.height = canvas.height + 'px';
   overlay.width = viewport.width;
   overlay.height = viewport.height;
-  // オーバーレイはcanvasに合わせてCSSで追従
-  overlay.style.width = '100%';
-  overlay.style.height = '100%';
+  // オーバーレイは内部サイズと1:1（CSSスケールなし）
+  overlay.style.width = overlay.width + 'px';
+  overlay.style.height = overlay.height + 'px';
   await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
   const oSx = 1.0;
   const oSy = 1.0;
@@ -438,17 +439,19 @@ function drawOverlay(canvas, pageNum, sx, sy) {
     const bx = x0 * sx, by = y0 * sy;
     const bw = (x1 - x0) * sx, bh = (y1 - y0) * sy;
     const fontSize = Math.max(11, Math.min(bh * 0.82, 20));
-    // 学籍番号を白矩形で隠す
-    ctx.fillStyle = 'rgba(255,255,255,0.94)';
-    ctx.fillRect(bx - 2, by - 1, bw + 4, bh + 2);
-    // 名前を上書き
     ctx.font = `500 ${fontSize}px 'Hiragino Sans', sans-serif`;
+    const textW = ctx.measureText(ann.name).width;
+    const rectW = Math.max(bw, textW) + 4;
+    // 学籍番号を白矩形で隠す（名前が長い場合は右にはみ出す）
+    ctx.fillStyle = 'rgba(255,255,255,0.94)';
+    ctx.fillRect(bx - 2, by - 1, rectW, bh + 2);
+    // 名前を上書き
     ctx.fillStyle = ann.matched ? '#185FA5' : '#A32D2D';
     ctx.fillText(ann.name, bx, by + bh * 0.82);
     // 薄い枠線
     ctx.strokeStyle = ann.matched ? 'rgba(37,99,168,0.2)' : 'rgba(153,31,31,0.2)';
     ctx.lineWidth = 0.8;
-    ctx.strokeRect(bx - 2, by - 1, bw + 4, bh + 2);
+    ctx.strokeRect(bx - 2, by - 1, rectW, bh + 2);
   });
 }
 
@@ -501,74 +504,89 @@ function toggleOverlay() {
   renderPDFPage(currentPage);
 }
 
+// フォントバイト列をページライフタイムでキャッシュ
+let __cachedNotoFontBytes = null;
+
 async function downloadResult() {
-  const { PDFDocument, rgb } = PDFLib;
+  try {
+    const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
-  // 1. 元PDFをpdf-libでロード（ベクター・テキスト・画像を完全保持）
-  const base64 = fileDataURL.split(',')[1];
-  const srcBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-  const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
-  const pdfLibDoc = await PDFDocument.create();
+    // 1. 元PDFをpdf-libでロード
+    const base64 = fileDataURL.split(',')[1];
+    const srcBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+    const pdfLibDoc = await PDFDocument.create();
 
-  // 2. 全ページをコピー（ベクターそのまま）
-  const pageIndices = Array.from({ length: totalPages }, (_, i) => i);
-  const copiedPages = await pdfLibDoc.copyPages(srcDoc, pageIndices);
-  copiedPages.forEach(p => pdfLibDoc.addPage(p));
+    // fontkitを登録
+    pdfLibDoc.registerFontkit(fontkit);
 
-  const renderScale = getRenderScale();
+    // 2. 全ページをコピー
+    const pageIndices = Array.from({ length: totalPages }, (_, i) => i);
+    const copiedPages = await pdfLibDoc.copyPages(srcDoc, pageIndices);
+    copiedPages.forEach(p => pdfLibDoc.addPage(p));
 
-  for (let p = 1; p <= totalPages; p++) {
-    const libPage = pdfLibDoc.getPage(p - 1);
-    const pageH = libPage.getHeight();
-    const anns = pageAnnotations[p] || [];
-    if (anns.length === 0) continue;
-
-    for (const ann of anns) {
-      const { x0, y0, x1, y1 } = ann.bbox;
-
-      // bbox（pdf.js座標）→ PDF座標系（左下原点・Y上向き）に変換
-      const pdfX = x0 / renderScale - 2;
-      const pdfW = (x1 - x0) / renderScale + 4;
-      const pdfH = (y1 - y0) / renderScale + 2;
-      const pdfY = pageH - (y1 / renderScale) - 1; // Y軸反転
-
-      // 3a. 白矩形で学籍番号を隠す
-      libPage.drawRectangle({
-        x: pdfX, y: pdfY, width: pdfW, height: pdfH,
-        color: rgb(1, 1, 1),
-        opacity: 0.95,
-      });
-
-      // 3b. 名前を小さいCanvasに描いてPNG stampとして貼り付け
-      const stampW = Math.ceil(pdfW * 2);
-      const stampH = Math.ceil(pdfH * 2);
-      const sc = document.createElement('canvas');
-      sc.width = stampW;
-      sc.height = stampH;
-      const sCtx = sc.getContext('2d');
-      const fontSize = Math.max(10, Math.min(stampH * 0.75, 26));
-      sCtx.font = `500 ${fontSize}px 'Hiragino Sans', 'Yu Gothic', sans-serif`;
-      sCtx.fillStyle = ann.matched ? '#185FA5' : '#A32D2D';
-      sCtx.fillText(ann.name, 1, stampH * 0.82);
-
-      const stampPng = sc.toDataURL('image/png').split(',')[1];
-      const stampBytes = Uint8Array.from(atob(stampPng), c => c.charCodeAt(0));
-      const stampImg = await pdfLibDoc.embedPng(stampBytes);
-
-      libPage.drawImage(stampImg, {
-        x: pdfX, y: pdfY, width: pdfW, height: pdfH,
-      });
+    // 3. フルセット日本語フォント（約16MB）を取得して埋め込む
+    let docFont;
+    try {
+      if (!__cachedNotoFontBytes) {
+        __cachedNotoFontBytes = await fetch(
+          'https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf'
+        ).then(r => r.arrayBuffer());
+      }
+      docFont = await pdfLibDoc.embedFont(new Uint8Array(__cachedNotoFontBytes));
+    } catch (e) {
+      console.error('フォント取得失敗:', e);
+      docFont = await pdfLibDoc.embedFont(StandardFonts.Helvetica);
     }
-  }
 
-  const pdfBytes = await pdfLibDoc.save();
-  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = uploadedFileName.replace(/\.[^.]+$/, '') + '_変換済み.pdf';
-  a.click();
-  URL.revokeObjectURL(a.href);
+    const renderScale = getRenderScale();
+
+    for (let p = 1; p <= totalPages; p++) {
+      const libPage = pdfLibDoc.getPage(p - 1);
+      const pageH = libPage.getHeight();
+      const anns = pageAnnotations[p] || [];
+      if (anns.length === 0) continue;
+
+      for (const ann of anns) {
+        const { x0, y0, x1, y1 } = ann.bbox;
+
+        const pdfX = x0 / renderScale - 2;
+        const pdfW = (x1 - x0) / renderScale + 4;
+        const pdfH = (y1 - y0) / renderScale + 2;
+        const pdfY = pageH - (y1 / renderScale) - 1;
+
+        // 白矩形で学籍番号を隠す
+        libPage.drawRectangle({
+          x: pdfX, y: pdfY, width: pdfW, height: pdfH,
+          color: rgb(1, 1, 1),
+          opacity: 0.95,
+        });
+
+        // テキストとして名前を書き込む
+        const fontSize = Math.max(6, Math.min(pdfH * 0.78, 14));
+        libPage.drawText(ann.name, {
+          x: pdfX + 1,
+          y: pdfY + pdfH * 0.18,
+          size: fontSize,
+          font: docFont,
+          color: ann.matched ? rgb(0.094, 0.373, 0.647) : rgb(0.639, 0.176, 0.176),
+        });
+      }
+    }
+
+    const pdfBytes = await pdfLibDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = uploadedFileName.replace(/\.[^.]+$/, '') + '_変換済み.pdf';
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+  } catch (err) {
+    console.error('変換エラー:', err);
+  }
 }
+
 </script>
 </body>
 </html>

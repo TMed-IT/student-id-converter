@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>学籍番号 → 名前 変換ツール</title>
-<!-- fixed: XSS対策・Shift-JIS対応・スケール統一・デッドコード削除・大容量警告 -->
 <style>
   :root {
     --bg: #f5f4f0;
@@ -30,6 +29,8 @@
   header { margin-bottom: 28px; padding-top: 8px; }
   header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
   header p { font-size: 13px; color: var(--text2); margin-top: 4px; }
+  .title-line {display: flex; justify-content: space-between; align-items: center; }
+  .btn-github {display: inline-flex; align-items: center; padding: 2px 5px; border-radius: 10px; border: 1px solid #f5f4f0 background-color: #f5f4f0; color: #6b6860; font-size: 12px; text-decoration: none; }
   .privacy-note { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 12px; color: var(--success); background: var(--success-light); padding: 5px 10px; border-radius: 999px; font-weight: 500; }
   .step { background: var(--surface); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
   .step-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -84,8 +85,13 @@
 <body>
 
 <header>
-  <h1>学籍番号 → 名前 変換</h1>
-  <p>PDFのテキストから学籍番号を検出して名前に置き換えます</p>
+  <div class="title-line">
+    <h1>PDF 学籍番号 → 名前 変換</h1>
+    <a href="https://github.com/TMed-IT/student-id-converter" class="btn-github" target="_blank"
+  rel="noopener noreferrer" title="このツールのソースコードをGitHubで開きます">GitHub link here</a>
+  </div>
+  <p>PDFのテキストから学籍番号を検出して名前に置き換えます
+  </p>
   <span class="privacy-note">🔒 すべてブラウザ内で処理 — 個人情報は外部に送信されません</span>
 </header>
 
@@ -518,6 +524,9 @@ function toggleOverlay() {
 let __cachedNotoFontBytes = null;
 
 async function downloadResult() {
+  document.getElementById('progress-section').style.display = 'block';
+  document.getElementById('viewer-section').style.display = 'none';
+  setProgress(5,'保存の準備をしています','');
   try {
     const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
@@ -539,16 +548,20 @@ async function downloadResult() {
     let docFont;
     try {
       if (!__cachedNotoFontBytes) {
+        setProgress(10,'フォントをダウンロード中','');
         __cachedNotoFontBytes = await fetch(
           './vendor/font/NotoSansCJKjp-Regular.2.004.otf'
         ).then(r => r.arrayBuffer());
       }
+      setProgress(10,'フォントをキャッシュから読み込み中','');
       docFont = await pdfLibDoc.embedFont(new Uint8Array(__cachedNotoFontBytes));
     } catch (e) {
       console.error('フォント取得失敗:', e);
+      setProgress(70,'フォントの取得失敗(代替フォントを使用)','');
       docFont = await pdfLibDoc.embedFont(StandardFonts.Helvetica);
     }
 
+    setProgress(70,'pdfに名前を追加中','');
     const renderScale = getRenderScale();
 
     for (let p = 1; p <= totalPages; p++) {
@@ -583,7 +596,7 @@ async function downloadResult() {
         });
       }
     }
-
+    setProgress(90,'pdfを保存中','');
     const pdfBytes = await pdfLibDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const a = document.createElement('a');
@@ -591,10 +604,14 @@ async function downloadResult() {
     a.download = uploadedFileName.replace(/\.[^.]+$/, '') + '_変換済み.pdf';
     a.click();
     URL.revokeObjectURL(a.href);
+    setProgress(100,'完了','');
 
   } catch (err) {
     console.error('変換エラー:', err);
+    setProgress(100,'変換エラー','')
   }
+  document.getElementById('progress-section').style.display = 'none';
+  document.getElementById('viewer-section').style.display = 'block';
 }
 
 // ---- イベント登録 ----

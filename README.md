@@ -65,25 +65,26 @@ URL: https://tmed-it.github.io/student-id-converter/
 
 ## 使用ライブラリ
 
-- [pdf.js](https://cdnjs.com/libraries/pdf.js)  ver.5.4.149  
+- [pdf.js](https://cdnjs.com/libraries/pdf.js)  ver.5.4.149　vendorフォルダ内  
   - PDF の読み込み、テキストレイヤー解析、Canvas 描画に使用
-- [pdf-lib](https://pdf-lib.js.org/)  ver.1.17.1  
+- [pdf-lib](https://pdf-lib.js.org/)  ver.1.17.1 CDM  
   - 変換後 PDF の生成に使用
-- [@pdf-lib/fontkit](https://www.npmjs.com/package/@pdf-lib/fontkit)  ver.1.1.1  
+- [@pdf-lib/fontkit](https://www.npmjs.com/package/@pdf-lib/fontkit)  ver.1.1.1 CDM  
   - 日本語フォントの埋め込みに使用
 
 ### 外部リソース
 
-- [Noto Sans CJK JP Regular](https://github.com/notofonts/noto-cjk)  ver.5.4.149  
+- [Noto Sans CJK JP Regular](https://github.com/notofonts/noto-cjk) CDM  
   - 出力 PDF に日本語を描画するため、実行時に OTF フォントを取得
 
 
 #### (開発者向け)
-ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrityを更新する必要があります  
+ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrity, vendor内のライブラリを更新する必要があります  
 integrityはファイルの整合性を確認するハッシュ値で、unpkg.comの場合はURL末尾に?metaを追加することで取得できます  
-(例:https://unpkg.com/pdf-lib@1.17.1/dist/?meta)
+(例:https://unpkg.com/pdf-lib@1.17.1/dist/?meta)  
+pdf.jsはSRIを実装できないため、DLしvendorフォルダ内に配置しています
 
-CDN Update 2026/5/4
+Last CDN Update 2026/5/4
 
 
 

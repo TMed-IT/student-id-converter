@@ -65,24 +65,24 @@ URL: https://tmed-it.github.io/student-id-converter/
 
 ## 使用ライブラリ
 
-- [pdf.js](https://cdnjs.com/libraries/pdf.js)  ver.5.4.149　vendorフォルダ内  
-  - PDF の読み込み、テキストレイヤー解析、Canvas 描画に使用
 - [pdf-lib](https://pdf-lib.js.org/)  ver.1.17.1 CDM  
   - 変換後 PDF の生成に使用
 - [@pdf-lib/fontkit](https://www.npmjs.com/package/@pdf-lib/fontkit)  ver.1.1.1 CDM  
   - 日本語フォントの埋め込みに使用
+- [pdf.js](https://cdnjs.com/libraries/pdf.js)  ver.5.4.149　./vendor/pdfjs  
+  - PDF の読み込み、テキストレイヤー解析、Canvas 描画に使用
 
-### 外部リソース
+### フォント
 
-- [Noto Sans CJK JP Regular](https://github.com/notofonts/noto-cjk) CDM  
+- [Noto Sans CJK JP Regular](https://github.com/notofonts/noto-cjk) ver.2.004 ./vendor/font  
   - 出力 PDF に日本語を描画するため、実行時に OTF フォントを取得
 
 
 #### (開発者向け)
-ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrity, vendor内のライブラリを更新する必要があります  
+ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrityまたは、html中のリンクとvendorフォルダ内のライブラリを更新する必要があります  
 integrityはファイルの整合性を確認するハッシュ値で、unpkg.comの場合はURL末尾に?metaを追加することで取得できます  
 (例:https://unpkg.com/pdf-lib@1.17.1/dist/?meta)  
-pdf.jsはSRIを実装できないため、DLしvendorフォルダ内に配置しています
+pdf.jsとフォントはSRIを実装できないため、DLしvendorフォルダ内に配置しています
 
 Last CDN Update 2026/5/4
 
@@ -94,7 +94,7 @@ Last CDN Update 2026/5/4
 - PDF 内の文字配置やフォントによっては検出精度に差が出る場合があります
 - 個人情報が含まれる名簿や PDF の取り扱いには十分注意してください
 - 保存時に約16MBのフォントファイルをダウンロードします。通信量の制限が厳しい方はWiFiに繋いでご利用ください
-- ライブラリやfontは、CDN 読み込みを用いていますリンク先の改竄にご注意ください
+- 一部ライブラリは、CDN 読み込みを用いています。リンク先の改竄にご注意ください
 - 自己責任でご使用ください
 
 ## ライセンス

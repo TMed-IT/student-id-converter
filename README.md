@@ -65,9 +65,9 @@ URL: https://tmed-it.github.io/student-id-converter/
 
 ## 使用ライブラリ
 
-- [pdf-lib](https://pdf-lib.js.org/)  ver.1.17.1 CDM  
+- [pdf-lib](https://pdf-lib.js.org/)  ver.1.17.1 CDN  
   - 変換後 PDF の生成に使用
-- [@pdf-lib/fontkit](https://www.npmjs.com/package/@pdf-lib/fontkit)  ver.1.1.1 CDM  
+- [@pdf-lib/fontkit](https://www.npmjs.com/package/@pdf-lib/fontkit)  ver.1.1.1 CDN  
   - 日本語フォントの埋め込みに使用
 - [pdf.js](https://cdnjs.com/libraries/pdf.js)  ver.5.4.149　./vendor/pdfjs  
   - PDF の読み込み、テキストレイヤー解析、Canvas 描画に使用

@@ -34,10 +34,10 @@ GitHub Pages にそのまま配置して利用できます。
   - 表示結果を反映した PDF を保存可能
 
 ## 使い方
-1. [ツールページ](https://tmed-it.github.io/student-id-converter/) を開く
+1. [ツールページ](https://tmed-it.github.io/student-id-converter/) を開きます
 
 2. 名簿のCSV ファイルを選択します  
-   形式は `学籍番号,名前` です。
+   形式は `学籍番号,名前`(1人1行) です
 
 3. PDF ファイルを選択します
 
@@ -78,9 +78,9 @@ URL: https://tmed-it.github.io/student-id-converter/
   - 出力 PDF に日本語を描画するため、実行時に OTF フォントを取得
 
 
-### (開発者向け)
-ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrityを更新する必要があります
-integrityはファイルの整合性を確認するハッシュ値でunpkg.comの場合URL末尾に?metaを追加することで取得できます
+#### (開発者向け)
+ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrityを更新する必要があります。  
+integrityはファイルの整合性を確認するハッシュ値で、unpkg.comの場合はURL末尾に?metaを追加することで取得できます。  
 (例:https://unpkg.com/pdf-lib@1.17.1/dist/?meta)
 
 CDN Update 2026/5/4

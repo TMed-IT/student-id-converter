@@ -34,15 +34,16 @@ GitHub Pages にそのまま配置して利用できます。
   - 表示結果を反映した PDF を保存可能
 
 ## 使い方
+1. [ツールページ](https://tmed-it.github.io/student-id-converter/) を開きます
 
-1. CSV ファイルを選択します  
-   形式は `学籍番号,名前` です。
+2. 名簿のCSV ファイルを選択します  
+   形式は `学籍番号,名前`(1人1行) です
 
-2. PDF ファイルを選択します
+3. PDF ファイルを選択します
 
-3. 変換を実行します
+4. 変換を実行します
 
-4. 画面上で結果を確認し、必要なら PDF をダウンロードします
+5. 画面上で結果を確認し、必要なら PDF をダウンロードします
 
 ## 公開先
 
@@ -64,14 +65,37 @@ URL: https://tmed-it.github.io/student-id-converter/
 
 ## 使用ライブラリ
 
-- [pdf.js](https://mozilla.github.io/pdf.js/)
-- [pdf-lib](https://pdf-lib.js.org/)
+- [pdf-lib](https://pdf-lib.js.org/)  ver.1.17.1 CDN  
+  - 変換後 PDF の生成に使用
+- [@pdf-lib/fontkit](https://www.npmjs.com/package/@pdf-lib/fontkit)  ver.1.1.1 CDN  
+  - 日本語フォントの埋め込みに使用
+- [pdf.js](https://cdnjs.com/libraries/pdf.js)  ver.5.4.149　./vendor/pdfjs  
+  - PDF の読み込み、テキストレイヤー解析、Canvas 描画に使用
+
+### フォント
+
+- [Noto Sans CJK JP Regular](https://github.com/notofonts/noto-cjk) ver.2.004 ./vendor/font  
+  - 出力 PDF に日本語を描画するため、実行時に OTF フォントを取得
+
+
+#### (開発者向け)
+ライブラリやフォントのアップデートに合わせてhtml中のCDNリンク・integrityまたは、html中のリンクとvendorフォルダ内のライブラリを更新する必要があります  
+integrityはファイルの整合性を確認するハッシュ値で、unpkg.comの場合はURL末尾に?metaを追加することで取得できます  
+(例:https://unpkg.com/pdf-lib@1.17.1/dist/?meta)  
+pdf.jsとフォントはSRIを実装できないため、DLしvendorフォルダ内に配置しています
+
+Last CDN Update 2026/5/4
+
+
 
 ## 注意事項
 
 - テキストレイヤーのない PDF では正しく処理できません。事前にOCRを行うことで変換できる可能性があります
 - PDF 内の文字配置やフォントによっては検出精度に差が出る場合があります
 - 個人情報が含まれる名簿や PDF の取り扱いには十分注意してください
+- 保存時に約16MBのフォントファイルをダウンロードします。通信量の制限が厳しい方はWiFiに繋いでご利用ください
+- 一部ライブラリは、CDN 読み込みを用いています。リンク先の改竄にご注意ください
+- 自己責任でご使用ください
 
 ## ライセンス
 MIT

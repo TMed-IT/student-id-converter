@@ -86,11 +86,11 @@
 
 <header>
   <div class="title-line">
-    <h1>PDF 学籍番号 → 名前 変換</h1>
+    <h1>学籍番号 → 名前 変換</h1>
     <a href="https://github.com/TMed-IT/student-id-converter" class="btn-github" target="_blank"
   rel="noopener noreferrer" title="このツールのソースコードをGitHubで開きます">GitHub link here</a>
   </div>
-  <p>PDFのテキストから学籍番号を検出して名前に置き換えます
+  <p>PDFのテキスト/画像から学籍番号を検出して名前に置き換えます
   </p>
   <span class="privacy-note">🔒 すべてブラウザ内で処理 — 個人情報は外部に送信されません</span>
 </header>
@@ -103,7 +103,7 @@
   <div class="upload-area" id="csv-upload-area">
     <span class="ico">📋</span>
     <p class="label">CSVをタップして選択</p>
-    <p class="hint">フォーマット：学籍番号,名前（例: 21001,田中 太郎）— 桁数は⚙で変更可</p>
+    <p class="hint">フォーマット：学籍番号,名前（例: 21001,田中 太郎）1人1行</p>
   </div>
   <input type="file" id="csv-input" accept=".csv,text/csv">
   <div id="csv-chip" class="chip" style="display:none;">
@@ -131,7 +131,7 @@
       </div>
       <span class="badge badge-blue" id="digits-badge">5桁モード（例: 11111）</span>
     </div>
-    <p style="font-size:12px; color:var(--text3); margin-top:8px;">CSVのフォーマット: 学籍番号,名前 — 数字部分が指定桁数のものを検出します</p>
+    <p style="font-size:12px; color:var(--text3); margin-top:8px;">CSVとOCRで指定桁数の学籍番号を検出します</p>
   </div>
 </div>
 
@@ -142,10 +142,10 @@
   </div>
   <div class="upload-area" id="pdf-upload-area">
     <span class="ico">📄</span>
-    <p class="label">PDFをタップして選択</p>
-    <p class="hint">PDF のみ対応（テキストレイヤー付き）</p>
+    <p class="label">PDF/画像をタップして選択</p>
+    <p class="hint">PDF（テキストレイヤー付き）/JPEG,PNG に対応</p>
   </div>
-  <input type="file" id="file-input" accept="application/pdf">
+  <input type="file" id="file-input" accept="application/pdf,image/png,image/jpeg">
   <div id="file-chip" class="chip" style="display:none;">
     <span class="chip-name" id="file-name"></span>
     <span class="badge badge-blue" id="file-type-badge"></span>
@@ -192,6 +192,11 @@
   crossorigin="anonymous">
 </script>
 
+<script src="https://unpkg.com/tesseract.js@7.0.0/dist/tesseract.min.js"
+  integrity="sha256-AAwn2c0N72Vfd7NscqOJwKsTeTqjHLTXqrVtCcCvvH4="
+  crossorigin="anonymous">
+</script>
+
 <script type="module">
   import * as pdfjsLib from './vendor/pdfjs/pdf.5.4.149.min.mjs';
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -199,15 +204,17 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 let mapping = {};
 let fileDataURL = null;
+let fileDataBytes = null;
+let pdfDoc = null;
 let fileMediaType = null;
 let isPDF = false;
-let pdfDoc = null;
 let currentPage = 1;
 let totalPages = 1;
 let overlayVisible = true;
 let pageAnnotations = {};
 let uploadedFileName = '';
 let idDigits = 5;  // 学籍番号の数字桁数（デフォルト5桁）
+let imgData = null;
 
 function changeDigits(delta) {
   idDigits = Math.max(3, Math.min(10, idDigits + delta));
@@ -232,6 +239,11 @@ function toggleDigitsSetting() {
 const RENDER_QUALITY = 1.5;
 function getRenderScale() {
   return RENDER_QUALITY;
+}
+//OCR倍率
+const OCR_SCALE = 1.5;
+function getOcrScale() {
+  return OCR_SCALE;
 }
 
 // ---- CSV ----
@@ -272,18 +284,30 @@ function onFileSelect(input) {
   const file = input.files[0];
   if (!file) return;
   uploadedFileName = file.name;
-  isPDF = true;
-  fileMediaType = 'application/pdf';
+  fileMediaType = file.type;
   document.getElementById('file-chip').style.display = 'flex';
   document.getElementById('file-name').textContent = file.name;
-  document.getElementById('file-type-badge').textContent = 'PDF';
-  const reader = new FileReader();
-  reader.onload = e => { fileDataURL = e.target.result; checkReady(); };
-  reader.readAsDataURL(file);
+  const badge = document.getElementById('file-type-badge');
+  if (file.type === 'application/pdf') {
+    isPDF = true;
+    badge.textContent = 'PDF';
+    const reader = new FileReader();
+    reader.onload = e => { fileDataURL = e.target.result; checkReady(); };
+    reader.readAsDataURL(file);
+  } else {
+    isPDF = false;
+    imgData = file;
+    if (file.type === 'image/jpeg') {
+      badge.textContent = 'JPEG';
+    } else if (file.type === 'image/png') {
+      badge.textContent = 'PNG';
+    }
+    checkReady();
+  }
 }
 
 function checkReady() {
-  document.getElementById('run-btn').disabled = !(Object.keys(mapping).length > 0 && fileDataURL);
+  document.getElementById('run-btn').disabled = !(Object.keys(mapping).length > 0 && (imgData || fileDataURL));
 }
 
 function setProgress(pct, label, stage) {
@@ -297,16 +321,29 @@ async function runConversion() {
   const btn = document.getElementById('run-btn');
   btn.disabled = true;
   btn.textContent = '処理中...';
-  if (fileDataURL) {
-    const base64Len = (fileDataURL.split(',')[1] || '').length;
-    const approxMB = (base64Len * 0.75) / (1024 * 1024);
-    if (approxMB > 20) {
-      const ok = confirm('ファイルサイズが大きいです（約' + approxMB.toFixed(1) + 'MB）。\n処理に時間がかかる場合があります。続行しますか？');
-      if (!ok) { btn.disabled = false; btn.textContent = '変換してオーバーレイ表示'; return; }
-    }
-  }
+  setProgress(0,'準備をしています','');
   document.getElementById('progress-section').style.display = 'block';
   document.getElementById('viewer-section').style.display = 'none';
+
+  if (!isPDF) {
+    //ocr処理
+    try{
+      const pdfBytes = await ocrProcess();
+      fileDataBytes = new Uint8Array(pdfBytes);
+      pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+    }catch(err){
+      alert('OCR処理に失敗しました\n' + err.message);
+      console.error(err);
+    }
+  } else if (fileDataURL) {
+    const base64 = fileDataURL.split(',')[1];
+    const binary = atob(base64);
+    const arr = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+    fileDataBytes = new Uint8Array(arr);
+    pdfDoc = await pdfjsLib.getDocument({ data: arr }).promise;
+  }
+  
   pageAnnotations = {};
 
   try {
@@ -386,12 +423,7 @@ async function extractIDsFromTextLayer(page, renderScale) {
 }
 
 async function processPDF() {
-  setProgress(5, 'PDFを読み込み中...', '');
-  const base64 = fileDataURL.split(',')[1];
-  const binary = atob(base64);
-  const arr = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-  pdfDoc = await pdfjsLib.getDocument({ data: arr }).promise;
+  setProgress(5, 'PDFを読み込み中...', ''); 
   totalPages = pdfDoc.numPages;
 
   // 最初のページでテキストレイヤー有無を判定
@@ -399,7 +431,11 @@ async function processPDF() {
   const useTextLayer = await hasTextLayer(firstPage);
 
   if (!useTextLayer) {
-    throw new Error('このPDFにはテキストレイヤーがありません。\nテキスト付きPDF（デジタル生成PDF）を使用してください。');
+    if(isPDF){
+      throw new Error('このPDFにはテキストレイヤーがありません。\nテキスト付きPDF（デジタル生成PDF）を使用してください。');
+    }else{
+      throw new Error('この画像から学籍番号を検出できませんでした。');
+    }
   }
   for (let p = 1; p <= totalPages; p++) {
     setProgress(((p - 1) / totalPages) * 95 + 5,
@@ -440,13 +476,14 @@ async function renderPDFPage(pageNum) {
   await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
   const oSx = 1.0;
   const oSy = 1.0;
-  drawOverlay(overlay, pageNum, oSx, oSy);
+  await drawOverlay(overlay, pageNum, oSx, oSy,page);
 }
 
 
-function drawOverlay(canvas, pageNum, sx, sy) {
+async function drawOverlay(canvas, pageNum, sx, sy,page) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
   if (!overlayVisible) return;
   (pageAnnotations[pageNum] || []).forEach(ann => {
     if (!ann.bbox) return;
@@ -468,6 +505,27 @@ function drawOverlay(canvas, pageNum, sx, sy) {
     ctx.lineWidth = 0.8;
     ctx.strokeRect(bx - 2, by - 1, rectW, bh + 2);
   });
+  ctx.restore();
+  if(isPDF) return;
+  //OCRをした場合はOCR結果を表示
+  const textContent = await page.getTextContent();
+  const viewport = page.getViewport({ scale: getRenderScale() });
+  if(textContent){
+    textContent.items.forEach(item => {
+    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    const baseX = tx[4] * sx;
+    const baseY = tx[5] * sy;
+
+    const str = item.str;
+    const charWidth = item.width * sx / str.length; 
+    const fontSize = tx[0] * sx;
+    ctx.font = `${fontSize}px 'monospace'`;
+    ctx.fillStyle = 'red';
+    ctx.fillText(str, baseX, baseY);
+  });
+
+  ctx.restore();
+  }
 }
 
 function showStats() {
@@ -530,42 +588,40 @@ async function downloadResult() {
   try {
     const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
-    // 1. 元PDFをpdf-libでロード
-    const base64 = fileDataURL.split(',')[1];
-    const srcBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-    const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
-    const pdfLibDoc = await PDFDocument.create();
+    //PDFDocを作成
+    const srcDoc = await PDFDocument.load(fileDataBytes,{ ignoreEncryption: true });
+    const newpDoc = await PDFDocument.create();
 
-    // fontkitを登録
-    pdfLibDoc.registerFontkit(fontkit);
+    //fontkitを登録
+    newpDoc.registerFontkit(fontkit);
 
-    // 2. 全ページをコピー
+    //全ページをコピー
     const pageIndices = Array.from({ length: totalPages }, (_, i) => i);
-    const copiedPages = await pdfLibDoc.copyPages(srcDoc, pageIndices);
-    copiedPages.forEach(p => pdfLibDoc.addPage(p));
+    const copiedPages = await newpDoc.copyPages(srcDoc, pageIndices);
+    copiedPages.forEach(p => newpDoc.addPage(p));
 
-    // 3. フルセット日本語フォント（約16MB）を取得して埋め込む
+    //フルセット日本語フォント（約16MB）を取得して埋め込む
     let docFont;
     try {
       if (!__cachedNotoFontBytes) {
-        setProgress(10,'フォントをダウンロード中','');
+        setProgress(10,'フォントをダウンロード中(16MB)','');
         __cachedNotoFontBytes = await fetch(
           './vendor/font/NotoSansCJKjp-Regular.2.004.otf'
         ).then(r => r.arrayBuffer());
       }
       setProgress(10,'フォントをキャッシュから読み込み中','');
-      docFont = await pdfLibDoc.embedFont(new Uint8Array(__cachedNotoFontBytes));
+      docFont = await newpDoc.embedFont(new Uint8Array(__cachedNotoFontBytes));
     } catch (e) {
       console.error('フォント取得失敗:', e);
       setProgress(70,'フォントの取得失敗(代替フォントを使用)','');
-      docFont = await pdfLibDoc.embedFont(StandardFonts.Helvetica);
+      docFont = await newpDoc.embedFont(StandardFonts.Helvetica);
     }
 
     setProgress(70,'pdfに名前を追加中','');
     const renderScale = getRenderScale();
 
     for (let p = 1; p <= totalPages; p++) {
-      const libPage = pdfLibDoc.getPage(p - 1);
+      const libPage = newpDoc.getPage(p - 1);
       const pageH = libPage.getHeight();
       const anns = pageAnnotations[p] || [];
       if (anns.length === 0) continue;
@@ -597,11 +653,11 @@ async function downloadResult() {
       }
     }
     setProgress(90,'pdfを保存中','');
-    const pdfBytes = await pdfLibDoc.save();
+    const pdfBytes = await newpDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = uploadedFileName.replace(/\.[^.]+$/, '') + '_変換済み.pdf';
+    a.download = uploadedFileName.replace(/\.[^.]+$/, '') + '.pdf';
     a.click();
     URL.revokeObjectURL(a.href);
     setProgress(100,'完了','');
@@ -612,6 +668,165 @@ async function downloadResult() {
   }
   document.getElementById('progress-section').style.display = 'none';
   document.getElementById('viewer-section').style.display = 'block';
+}
+
+async function ocrProcess() {
+  const scale = getOcrScale();
+  if (!imgData) {
+    alert('画像が読み込まれていません');
+    return;
+  }
+  const {canvas, width, height} = await upscaleToCanvas(imgData, scale);
+
+  const workerInstance = await ensureocrWorker();
+  const {data} = await workerInstance.recognize(canvas,{
+    tessedit_pageseg_mode: Tesseract.PSM.AUTO
+  },{
+    blocks: true
+  }); 
+
+  workerInstance.terminate();
+
+  //5桁の数字とその座標を抽出
+  let words = null;
+  const digitWords = [];
+  if (!data.blocks) {
+  console.error('data.blocks がありません');
+  } else {
+    words = data.blocks
+    .map(block =>
+      block.paragraphs.map(paragraph =>
+        paragraph.lines.map(line =>
+          line.words
+        )
+      )
+    )
+    .flat(3);  // ネスト3段: blocks → paragraphs → lines → words をフラットにする
+
+    for (const word of words) {
+      let txt = word.text || '';
+      const match = txt.match(/\d+/g);
+      //指定の桁数の数字を抽出
+      if (!match) continue;
+      for (let m of match) {
+        //先頭に8が誤検知される場合があるため、先頭の8を除く
+        if (m.length === idDigits +1 && m[0] === '8') {
+          console.log(m+'の先頭の8を除きました');
+          m = m.slice(1);
+        };
+        // 指定の桁数の数字だけ拾う
+        if (m.length === idDigits) {
+          digitWords.push({
+            text: m,
+            x0: word.bbox.x0,
+            y0: word.bbox.y0,
+            x1: word.bbox.x1,
+            y1: word.bbox.y1
+          });
+        }
+      }
+    }  
+  }
+  console.log(`抽出された数字: ${digitWords.map(x => x.text).join(', ') || '(なし)'}`);
+  
+  //PDFを生成
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+  const imgpdfDoc = await PDFDocument.create();
+  const imgBytes = await imgData.arrayBuffer();
+  let image;
+  if (imgData.type === 'image/jpeg') {
+    image = await imgpdfDoc.embedJpg(imgBytes);
+  } else {
+    image = await imgpdfDoc.embedPng(imgBytes);
+  }
+
+  const imgWidth = image.width;
+  const imgHeight = image.height;
+  const page = imgpdfDoc.addPage([imgWidth, imgHeight]);
+
+  page.drawImage(image, {
+    x: 0,
+    y: 0,
+    width: imgWidth,
+    height: imgHeight
+  });
+
+  const font = await imgpdfDoc.embedFont(StandardFonts.Helvetica);
+  const sx = imgWidth / width;
+  const sy = imgHeight / height;
+
+  for (const wItem of digitWords) {
+    const bx0 = wItem.x0 * sx;
+    const by0 = wItem.y0 * sy;
+    const bx1 = wItem.x1 * sx;
+    const by1 = wItem.y1 * sy;
+    const bh = by1 - by0;
+
+    const text = wItem.text;
+    const fontSize = Math.max(6, Math.min(bh * 1.2, 32));
+
+    const textWidth = font.widthOfTextAtSize(text, fontSize);
+    const pdfX = bx1 - textWidth;                         // 右寄せ
+    const pdfY = imgHeight - by1 + (bh - fontSize) / 2;   // 縦位置調整
+
+    page.drawText(text, {
+      x: pdfX,
+      y: pdfY,
+      size: fontSize,
+      font,
+      color: rgb(1, 1, 1),
+      opacity: 0.0
+    });
+  }
+  const pdfBytes = await imgpdfDoc.save();
+  return pdfBytes;
+}
+
+async function ensureocrWorker() {
+  const ocrworker = await Tesseract.createWorker('eng',1,{
+    logger: m => {
+      if (m.status === 'recognizing text') {
+        setProgress(Math.round(m.progress * 100), '画像から学籍番号を抽出中...');
+      }
+    }
+  });
+  await ocrworker.setParameters({
+    tessedit_char_whitelist: '0123456789',
+    user_defined_dpi: '300'
+  });
+  return ocrworker;
+}
+
+async function upscaleToCanvas(imageBlob, scale) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(imageBlob);
+    const img = new Image();
+    img.onload = () => {
+      const maxSide = 1800;
+      let sw = img.naturalWidth * scale;
+      let sh = img.naturalHeight * scale;
+      const sMax = Math.max(sw, sh);
+      if (sMax > maxSide) {
+        const ratio = maxSide / sMax;
+        sw = Math.round(sw * ratio);
+        sh = Math.round(sh * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = sw;
+      canvas.height = sh;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, sw, sh);
+      URL.revokeObjectURL(url);
+      resolve({ canvas, width: sw, height: sh });
+    };
+    img.onerror = err => {
+      URL.revokeObjectURL(url);
+      reject(err);
+    };
+    img.src = url;
+  });
 }
 
 // ---- イベント登録 ----

@@ -206,7 +206,6 @@ let mapping = {};
 let fileDataURL = null;
 let fileDataBytes = null;
 let pdfDoc = null;
-let fileMediaType = null;
 let isPDF = false;
 let currentPage = 1;
 let totalPages = 1;
@@ -284,7 +283,6 @@ function onFileSelect(input) {
   const file = input.files[0];
   if (!file) return;
   uploadedFileName = file.name;
-  fileMediaType = file.type;
   document.getElementById('file-chip').style.display = 'flex';
   document.getElementById('file-name').textContent = file.name;
   const badge = document.getElementById('file-type-badge');

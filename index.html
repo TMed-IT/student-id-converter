@@ -202,26 +202,31 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   './vendor/pdfjs/pdf.worker.5.4.149.min.mjs';
 
-let mapping = {};
-let fileDataURL = null;
-let fileDataBytes = null;
-let pdfDoc = null;
-let isPDF = false;
-let currentPage = 1;
-let totalPages = 1;
-let overlayVisible = true;
-let pageAnnotations = {};
-let uploadedFileName = '';
-let idDigits = 5;  // 学籍番号の数字桁数（デフォルト5桁）
-let imgData = null;
+const app = {
+  mapping : {},
+  fileDataURL : null,
+  fileDataBytes : null,
+  pdfDoc : null,
+  isPDF : false,
+  currentPage : 1,
+  totalPages : 1,
+  overlayVisible : true,
+  pageAnnotations : {},
+  uploadedFileName : '',
+  idDigits : 5,  // 学籍番号の数字桁数（デフォルト5桁）
+  imgData : null,
+};
+
+//Debug用　桁数を絞らずにすべてのOCR結果を出力する
+const ALL_OCR_DIGITS = false;
 
 function changeDigits(delta) {
-  idDigits = Math.max(3, Math.min(10, idDigits + delta));
-  document.getElementById('digits-display').textContent = idDigits;
-  document.getElementById('digits-badge').textContent = idDigits + '桁モード（例: ' + '1'.repeat(idDigits) + '）';
-  document.getElementById('digits-summary').textContent = idDigits + '桁';
-  document.getElementById('digits-minus').disabled = idDigits <= 3;
-  document.getElementById('digits-plus').disabled = idDigits >= 10;
+  app.idDigits = Math.max(3, Math.min(10, app.idDigits + delta));
+  document.getElementById('digits-display').textContent = app.idDigits;
+  document.getElementById('digits-badge').textContent = app.idDigits + '桁モード（例: ' + '1'.repeat(app.idDigits) + '）';
+  document.getElementById('digits-summary').textContent = app.idDigits + '桁';
+  document.getElementById('digits-minus').disabled = app.idDigits <= 3;
+  document.getElementById('digits-plus').disabled = app.idDigits >= 10;
   const csvInput = document.getElementById('csv-input');
   if (csvInput.files[0]) loadCSV(csvInput);
 }
@@ -258,22 +263,22 @@ function loadCSV(input) {
     } catch(_) {
       text = new TextDecoder('shift-jis').decode(buf);
     }
-    mapping = {};
+    app.mapping = {};
     text.split(/\r?\n/).forEach(line => {
       const parts = line.split(',');
       if (parts.length < 2) return;
       const id = parts[0].trim().replace(/^"|"$/g, '');
       const name = parts.slice(1).join(',').trim().replace(/^"|"$/g, '');
       const normId = id.replace(/\s/g,'').toUpperCase();
-      const csvRegex = new RegExp('^[A-Za-z]{0,2}\\d{' + idDigits + '}$');
+      const csvRegex = new RegExp('^[A-Za-z]{0,2}\\d{' + app.idDigits + '}$');
       if (csvRegex.test(normId) && name) {
         const numKey = normId.replace(/^[A-Za-z]{0,2}/, '');
-        mapping[numKey] = name;
+        app.mapping[numKey] = name;
       }
     });
     document.getElementById('csv-chip').style.display = 'flex';
     document.getElementById('csv-name').textContent = file.name;
-    document.getElementById('csv-count').textContent = Object.keys(mapping).length + ' 件';
+    document.getElementById('csv-count').textContent = Object.keys(app.mapping).length + ' 件';
     checkReady();
   };
   readerAB.readAsArrayBuffer(file);
@@ -282,19 +287,19 @@ function loadCSV(input) {
 function onFileSelect(input) {
   const file = input.files[0];
   if (!file) return;
-  uploadedFileName = file.name;
+  app.uploadedFileName = file.name;
   document.getElementById('file-chip').style.display = 'flex';
   document.getElementById('file-name').textContent = file.name;
   const badge = document.getElementById('file-type-badge');
   if (file.type === 'application/pdf') {
-    isPDF = true;
+    app.isPDF = true;
     badge.textContent = 'PDF';
     const reader = new FileReader();
-    reader.onload = e => { fileDataURL = e.target.result; checkReady(); };
+    reader.onload = e => { app.fileDataURL = e.target.result; checkReady(); };
     reader.readAsDataURL(file);
   } else {
-    isPDF = false;
-    imgData = file;
+    app.isPDF = false;
+    app.imgData = file;
     if (file.type === 'image/jpeg') {
       badge.textContent = 'JPEG';
     } else if (file.type === 'image/png') {
@@ -305,7 +310,7 @@ function onFileSelect(input) {
 }
 
 function checkReady() {
-  document.getElementById('run-btn').disabled = !(Object.keys(mapping).length > 0 && (imgData || fileDataURL));
+  document.getElementById('run-btn').disabled = !(Object.keys(app.mapping).length > 0 && (app.imgData || app.fileDataURL));
 }
 
 function setProgress(pct, label, stage) {
@@ -323,26 +328,26 @@ async function runConversion() {
   document.getElementById('progress-section').style.display = 'block';
   document.getElementById('viewer-section').style.display = 'none';
 
-  if (!isPDF) {
+  if (!app.isPDF) {
     //ocr処理
     try{
       const pdfBytes = await ocrProcess();
-      fileDataBytes = new Uint8Array(pdfBytes);
-      pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+      app.fileDataBytes = new Uint8Array(pdfBytes);
+      app.pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
     }catch(err){
       alert('OCR処理に失敗しました\n' + err.message);
       console.error(err);
     }
-  } else if (fileDataURL) {
-    const base64 = fileDataURL.split(',')[1];
+  } else if (app.fileDataURL) {
+    const base64 = app.fileDataURL.split(',')[1];
     const binary = atob(base64);
     const arr = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-    fileDataBytes = new Uint8Array(arr);
-    pdfDoc = await pdfjsLib.getDocument({ data: arr }).promise;
+    app.fileDataBytes = new Uint8Array(arr);
+    app.pdfDoc = await pdfjsLib.getDocument({ data: arr }).promise;
   }
   
-  pageAnnotations = {};
+  app.pageAnnotations = {};
 
   try {
     await processPDF();
@@ -381,13 +386,13 @@ async function extractIDsFromTextLayer(page, renderScale) {
     if (!str) continue;
 
     // \b を使わず、アルファベット0〜2文字 + 5桁数字のパターンを検索
-    const extractRegex = new RegExp('([A-Za-z]{0,2}\\d{' + idDigits + '})', 'g');
+    const extractRegex = new RegExp('([A-Za-z]{0,2}\\d{' + app.idDigits + '})', 'g');
     const matches = [...str.matchAll(extractRegex)];
     for (const m of matches) {
       const id = m[1].toUpperCase();
       const numKey = id.replace(/^[A-Za-z]{0,2}/, ''); // 数字部分のみで照合（idDigits桁）
-      const matched = !!mapping[numKey];
-      const name = mapping[numKey] || '（対応なし）';
+      const matched = !!app.mapping[numKey];
+      const name = app.mapping[numKey] || '（対応なし）';
 
       const tx = item.transform; // [scaleX, 0, 0, scaleY, originX, originY]
       const itemH = Math.abs(tx[3]) || item.height || 12;
@@ -422,41 +427,41 @@ async function extractIDsFromTextLayer(page, renderScale) {
 
 async function processPDF() {
   setProgress(5, 'PDFを読み込み中...', ''); 
-  totalPages = pdfDoc.numPages;
+  app.totalPages = app.pdfDoc.numPages;
 
   // 最初のページでテキストレイヤー有無を判定
-  const firstPage = await pdfDoc.getPage(1);
+  const firstPage = await app.pdfDoc.getPage(1);
   const useTextLayer = await hasTextLayer(firstPage);
 
   if (!useTextLayer) {
-    if(isPDF){
+    if(app.isPDF){
       throw new Error('このPDFにはテキストレイヤーがありません。\nテキスト付きPDF（デジタル生成PDF）を使用してください。');
     }else{
       throw new Error('この画像から学籍番号を検出できませんでした。');
     }
   }
-  for (let p = 1; p <= totalPages; p++) {
-    setProgress(((p - 1) / totalPages) * 95 + 5,
-      `テキスト抽出中 (${p}/${totalPages}ページ)`, '');
-    const page = await pdfDoc.getPage(p);
+  for (let p = 1; p <= app.totalPages; p++) {
+    setProgress(((p - 1) / app.totalPages) * 95 + 5,
+      `テキスト抽出中 (${p}/${app.totalPages}ページ)`, '');
+    const page = await app.pdfDoc.getPage(p);
     const renderScale = getRenderScale();
-    pageAnnotations[p] = await extractIDsFromTextLayer(page, renderScale);
+    app.pageAnnotations[p] = await extractIDsFromTextLayer(page, renderScale);
   }
     setProgress(100, '完了', '');
 }
 
 // ---- 描画 ----
 async function renderViewer() {
-  currentPage = 1;
+  app.currentPage = 1;
   document.getElementById('img-wrap').style.display = 'none';
   document.getElementById('pdf-canvas').style.display = 'block';
   document.getElementById('overlay-canvas').style.display = 'block';
-  await renderPDFPage(currentPage);
+  await renderPDFPage(app.currentPage);
   updatePageButtons();
 }
 
 async function renderPDFPage(pageNum) {
-  const page = await pdfDoc.getPage(pageNum);
+  const page = await app.pdfDoc.getPage(pageNum);
   const scale = getRenderScale();
   const viewport = page.getViewport({ scale });
   const canvas = document.getElementById('pdf-canvas');
@@ -482,8 +487,8 @@ async function drawOverlay(canvas, pageNum, sx, sy,page) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
-  if (!overlayVisible) return;
-  (pageAnnotations[pageNum] || []).forEach(ann => {
+  if (!app.overlayVisible) return;
+  (app.pageAnnotations[pageNum] || []).forEach(ann => {
     if (!ann.bbox) return;
     const { x0, y0, x1, y1 } = ann.bbox;
     const bx = x0 * sx, by = y0 * sy;
@@ -504,7 +509,7 @@ async function drawOverlay(canvas, pageNum, sx, sy,page) {
     ctx.strokeRect(bx - 2, by - 1, rectW, bh + 2);
   });
   ctx.restore();
-  if(isPDF) return;
+  if(app.isPDF) return;
   //OCRをした場合はOCR結果を表示
   const textContent = await page.getTextContent();
   const viewport = page.getViewport({ scale: getRenderScale() });
@@ -527,7 +532,7 @@ async function drawOverlay(canvas, pageNum, sx, sy,page) {
 }
 
 function showStats() {
-  const all = Object.values(pageAnnotations).flat();
+  const all = Object.values(app.pageAnnotations).flat();
   const matched = all.filter(a => a.matched).length;
   const unmatched = all.length - matched;
   document.getElementById('stats-row').innerHTML = `
@@ -542,7 +547,7 @@ function esc(s) {
 }
 
 function showResultList() {
-  const all = Object.values(pageAnnotations).flat();
+  const all = Object.values(app.pageAnnotations).flat();
   document.getElementById('result-list').innerHTML = all.length === 0 ? '' :
     `<p class="section-divider" style="margin-top:16px;">検出された学籍番号</p>` +
     all.map(a => `
@@ -555,25 +560,25 @@ function showResultList() {
 }
 
 function updatePageButtons() {
-  document.getElementById('page-info').textContent = `${currentPage} / ${totalPages} ページ`;
-  document.getElementById('prev-btn').disabled = currentPage <= 1;
-  document.getElementById('next-btn').disabled = currentPage >= totalPages;
+  document.getElementById('page-info').textContent = `${app.currentPage} / ${app.totalPages} ページ`;
+  document.getElementById('prev-btn').disabled = app.currentPage <= 1;
+  document.getElementById('next-btn').disabled = app.currentPage >= app.totalPages;
 }
 
 async function prevPage() {
-  if (currentPage > 1) { currentPage--; await renderPDFPage(currentPage); updatePageButtons(); showResultList(); }
+  if (app.currentPage > 1) { app.currentPage--; await renderPDFPage(app.currentPage); updatePageButtons(); showResultList(); }
 }
 
 async function nextPage() {
-  if (currentPage < totalPages) { currentPage++; await renderPDFPage(currentPage); updatePageButtons(); showResultList(); }
+  if (app.currentPage < app.totalPages) { app.currentPage++; await renderPDFPage(app.currentPage); updatePageButtons(); showResultList(); }
 }
 
 function toggleOverlay() {
-  overlayVisible = !overlayVisible;
+  app.overlayVisible = !app.overlayVisible;
   const btn = document.getElementById('toggle-btn');
-  btn.textContent = overlayVisible ? '名前を表示中' : '元の番号を表示中';
-  btn.classList.toggle('active', overlayVisible);
-  renderPDFPage(currentPage);
+  btn.textContent = app.overlayVisible ? '名前を表示中' : '元の番号を表示中';
+  btn.classList.toggle('active', app.overlayVisible);
+  renderPDFPage(app.currentPage);
 }
 
 // フォントバイト列をページライフタイムでキャッシュ
@@ -587,14 +592,14 @@ async function downloadResult() {
     const { PDFDocument, rgb, StandardFonts } = PDFLib;
 
     //PDFDocを作成
-    const srcDoc = await PDFDocument.load(fileDataBytes,{ ignoreEncryption: true });
+    const srcDoc = await PDFDocument.load(app.fileDataBytes,{ ignoreEncryption: true });
     const newpDoc = await PDFDocument.create();
 
     //fontkitを登録
     newpDoc.registerFontkit(fontkit);
 
     //全ページをコピー
-    const pageIndices = Array.from({ length: totalPages }, (_, i) => i);
+    const pageIndices = Array.from({ length: app.totalPages }, (_, i) => i);
     const copiedPages = await newpDoc.copyPages(srcDoc, pageIndices);
     copiedPages.forEach(p => newpDoc.addPage(p));
 
@@ -618,10 +623,10 @@ async function downloadResult() {
     setProgress(70,'pdfに名前を追加中','');
     const renderScale = getRenderScale();
 
-    for (let p = 1; p <= totalPages; p++) {
+    for (let p = 1; p <= app.totalPages; p++) {
       const libPage = newpDoc.getPage(p - 1);
       const pageH = libPage.getHeight();
-      const anns = pageAnnotations[p] || [];
+      const anns = app.pageAnnotations[p] || [];
       if (anns.length === 0) continue;
 
       for (const ann of anns) {
@@ -655,7 +660,7 @@ async function downloadResult() {
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = uploadedFileName.replace(/\.[^.]+$/, '') + '.pdf';
+    a.download = app.uploadedFileName.replace(/\.[^.]+$/, '') + '.pdf';
     a.click();
     URL.revokeObjectURL(a.href);
     setProgress(100,'完了','');
@@ -670,13 +675,13 @@ async function downloadResult() {
 
 async function ocrProcess() {
   const scale = getOcrScale();
-  if (!imgData) {
+  if (!app.imgData) {
     alert('画像が読み込まれていません');
     return;
   }
-  const {canvas, width, height} = await upscaleToCanvas(imgData, scale);
+  const {canvas, width, height} = await upscaleToCanvas(app.imgData, scale);
 
-  const workerInstance = await ensureocrWorker();
+  const workerInstance = await ensureOcrWorker();
   const {data} = await workerInstance.recognize(canvas,{
     tessedit_pageseg_mode: Tesseract.PSM.AUTO
   },{
@@ -708,12 +713,12 @@ async function ocrProcess() {
       if (!match) continue;
       for (let m of match) {
         //先頭に8が誤検知される場合があるため、先頭の8を除く
-        if (m.length === idDigits +1 && m[0] === '8') {
+        if (m.length === app.idDigits +1 && m[0] === '8') {
           console.log(m+'の先頭の8を除きました');
           m = m.slice(1);
         };
-        // 指定の桁数の数字だけ拾う
-        if (m.length === idDigits) {
+        // 指定の桁数の数字だけ拾う ALL_OCR_DIGITSをtrueにすると全ての数字を表示する
+        if (m.length === app.idDigits||ALL_OCR_DIGITS) {
           digitWords.push({
             text: m,
             x0: word.bbox.x0,
@@ -730,9 +735,9 @@ async function ocrProcess() {
   //PDFを生成
   const { PDFDocument, rgb, StandardFonts } = PDFLib;
   const imgpdfDoc = await PDFDocument.create();
-  const imgBytes = await imgData.arrayBuffer();
+  const imgBytes = await app.imgData.arrayBuffer();
   let image;
-  if (imgData.type === 'image/jpeg') {
+  if (app.imgData.type === 'image/jpeg') {
     image = await imgpdfDoc.embedJpg(imgBytes);
   } else {
     image = await imgpdfDoc.embedPng(imgBytes);
@@ -780,7 +785,7 @@ async function ocrProcess() {
   return pdfBytes;
 }
 
-async function ensureocrWorker() {
+async function ensureOcrWorker() {
   const ocrworker = await Tesseract.createWorker('eng',1,{
     logger: m => {
       if (m.status === 'recognizing text') {
